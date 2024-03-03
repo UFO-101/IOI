@@ -1,3 +1,6 @@
+## This is a fork of [redwoodresearch/Easy-Transformer](https://github.com/redwoodresearch/Easy-Transformer) with updated deterministic prompt generation. This is to verify that my library [UFO-101/auto-circuit](https://github.com/UFO-101/auto-circuit) can exactly reproduce the IOI results
+
+
 This repository contains the code for all experiments in the paper "Interpretability in the Wild: a Circuit for Indirect Object Identification in GPT-2 Small" (Wang et al, 2022).
 
 <img src="https://i.imgur.com/iptFVBc.png">

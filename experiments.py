@@ -12,6 +12,7 @@
 # <img src="https://i.imgur.com/arokEMj.png">
 #%% [markdown]
 ## Setup
+from collections import defaultdict
 from copy import deepcopy
 import torch
 
@@ -75,47 +76,57 @@ model.set_use_headwise_qkv_input(True)
 model.set_use_attn_result(True)
 #%% [markdown]
 # Initialise dataset
-N = 100
-ioi_dataset = IOIDataset(
-    prompt_type="mixed",
-    N=N,
-    tokenizer=model.tokenizer,
-    prepend_bos=False,
-)  # TODO make this a seeded dataset
+results_dict = defaultdict(lambda: defaultdict(list))
+for prepend_bos in [True, False]:
+    for prompt_format in ["ABBA", "BABA"]:
+    # for prompt_format in ["ABBA"]:
+        for template_idx in range(15):
+            N = 50
+            ioi_dataset = IOIDataset(
+                prompt_type=prompt_format,
+                template_idx=template_idx,
+                N=N,
+                tokenizer=model.tokenizer,
+                prepend_bos=prepend_bos,
+                seed=0,
+                device="cpu",
+            )  # TODO make this a seeded dataset
+            # we make the ABC dataset in order to knockout other model components
+            abc_dataset = ioi_dataset.gen_flipped_prompts("ABB->XYZ, BAB->XYZ")
 
-print(f"Here are two of the prompts from the dataset: {ioi_dataset.sentences[:2]}")
-#%% [markdown]
-# See logit difference
-model_logit_diff = logit_diff(model, ioi_dataset)
-model_io_probs = probs(model, ioi_dataset)
-print(
-    f"The model gets average logit difference {model_logit_diff.item()} over {N} examples"
-)
-print(f"The model gets average IO probs {model_io_probs.item()} over {N} examples")
-#%% [markdown]
-# The circuit
-circuit = deepcopy(CIRCUIT)
+            # print(f"Here are two of the prompts from the dataset: {ioi_dataset.sentences[:2]}")
+            # print(f"Here are two of the prompts from the ABC dataset: {abc_dataset.sentences[:2]}")
 
-# we make the ABC dataset in order to knockout other model components
-abc_dataset = (  # TODO seeded
-    ioi_dataset.gen_flipped_prompts(("IO", "RAND"))
-    .gen_flipped_prompts(("S", "RAND"))
-    .gen_flipped_prompts(("S1", "RAND"))
-)
-# we then add hooks to the model to knockout all the heads except the circuit
-model.reset_hooks()
-model, _ = do_circuit_extraction(
-    model=model,
-    heads_to_keep=get_heads_circuit(ioi_dataset=ioi_dataset, circuit=circuit),
-    mlps_to_remove={},
-    ioi_dataset=ioi_dataset,
-    mean_dataset=abc_dataset,
-)
+            # See logit difference
+            model.reset_hooks()
+            model_logit_diff = logit_diff(model, ioi_dataset)
+            model_io_probs = probs(model, ioi_dataset)
+            # print(
+            #     f"The model gets average logit difference {model_logit_diff.item()} over {N} examples"
+            # )
+            # print(f"The model gets average IO probs {model_io_probs.item()} over {N} examples")
+            # The circuit
+            circuit = deepcopy(CIRCUIT)
+            model.reset_hooks()
 
-circuit_logit_diff = logit_diff(model, ioi_dataset)
-print(
-    f"The circuit gets average logit difference {circuit_logit_diff.item()} over {N} examples"
-)
+            # we then add hooks to the model to knockout all the heads except the circuit
+            model.reset_hooks()
+            model, _ = do_circuit_extraction(
+                model=model,
+                heads_to_keep=get_heads_circuit(ioi_dataset=ioi_dataset, circuit=circuit),
+                mlps_to_remove={},
+                ioi_dataset=ioi_dataset,
+                mean_dataset=abc_dataset,
+            )
+
+            circuit_logit_diff = logit_diff(model, ioi_dataset)
+            # print(
+            #     f"The circuit gets average logit difference {circuit_logit_diff.item()} over {N} examples"
+            # )
+            logit_diff_percent = ((circuit_logit_diff / model_logit_diff) * 100).item()
+            print("prepend_bos", prepend_bos, "Template:", prompt_format, "index:", template_idx, f"logit diff percent {logit_diff_percent}")
+            results_dict[prepend_bos][prompt_format].append(logit_diff_percent)
+
 #%% [markdown]
 ## Path patching
 
